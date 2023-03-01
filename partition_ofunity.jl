@@ -34,7 +34,7 @@ end
 function wendland_C2(r::Real,ϵ)
     if r/ϵ >= 0.0 && r/ϵ <=1.0
         return ((1-r/ϵ)^4) * (4r/ϵ+1)
-    else 
+    else
         return 0.0
     end
 end
@@ -79,7 +79,7 @@ shepard_matrix!(SM)
 
 tree_data = KDTree(d_sites,Euclidean(),leafsize = 3)
 tree_eval = KDTree(eval_sites,Euclidean(),leafsize = 3)
-rr = 0.1
+rr = 0.2
 globalfit = zeros(Float64,size(eval_sites)[2])
 for i in 1:N_pu^2
     idxs_data = inrange(tree_data, pu_sites[:,i], radius, true)
@@ -109,7 +109,7 @@ ax = Axis3(f[1, 1]; aspect=(1, 1, 1))
 surface!(ax,eval_sites[1,:],eval_sites[2,:],globalfit)
 f
 
-f2 = Figure()
-ax2 = Axis3(f2[1, 1]; aspect=(1, 1, 1))
-surface!(ax2,eval_sites[1,:],eval_sites[2,:],globalfit-f_eval)
-f2
+#f2 = Figure()
+#ax2 = Axis3(f2[1, 1]; aspect=(1, 1, 1))
+#surface!(ax2,eval_sites[1,:],eval_sites[2,:],globalfit-f_eval)
+#f2

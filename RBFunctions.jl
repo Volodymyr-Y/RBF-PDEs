@@ -27,12 +27,18 @@ function generate_2D_Halton_points(N) # 2-3 Halton sequence looks random enough
     return float(list)
 end
 
+
+
 function linear(r,ϵ) # Linear RBF
     return abs(r)
 end
 
 function gaussian(r,ϵ) # guassian RBF
     return exp(-1*r*r*ϵ*ϵ)
+end
+
+function Δgaussian(r,ϵ)
+    return 2*ϵ*ϵ*exp(-1*r*r*ϵ*ϵ)*(2*r*r*ϵ*ϵ - 1) - 2*ϵ*ϵ*exp(-1*r*r*ϵ*ϵ)
 end
 
 function sinusoid(x,y,period) # random function for interpolation
@@ -45,4 +51,12 @@ function frankes_func(x,y) # literature standard benchmark for interpolation
     f3 =0.5*exp((-1/4)*((9*x-7).^2 + (9*y-3).^2))
     f4 = 0.2*exp(-(9*x-4).^2 - (9*y-7).^2)
     return f1+f2+f3-f4
+end
+
+function wendland_C2(r::Real,ϵ)
+    if r/ϵ >= 0.0 && r/ϵ <=1.0
+        return ((1-r/ϵ)^4) * (4r/ϵ+1)
+    else 
+        return 0.0
+    end
 end
