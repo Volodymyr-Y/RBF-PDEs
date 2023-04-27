@@ -57,9 +57,9 @@ function point_difference_tensor(points1,points2) # reates NxMx2 tensor
     return A
 end
 
-function apply(func, tensor)
+function apply(func, tensor,param)
     l1,l2,l3 = size(tensor)
-    A = [ func(tensor[i,j,:]) for i=1:l1, j=1:l2]
+    A = [ func(tensor[i,j,:],param) for i=1:l1, j=1:l2]
     return A
 end
 
