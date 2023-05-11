@@ -1,9 +1,14 @@
 
+
+
 using Distances
 using LinearAlgebra 
 using FastHalton
 using SparseArrays
 using NearestNeighbors
+using Symbolics
+using Latexify
+
 function abcd(x)
     return x*x
 end
@@ -94,3 +99,74 @@ function wendland_C2(r::Real,ϵ)
         return 0.0
     end
 end
+
+function generate_vector_function(func::Function,points) 
+    N = size(points)[2]
+    res = zeros(N)
+    x = points[1,:]
+    y = points[2,:]
+    function aa(time)
+        return func.(x,y,Ref(time))
+    end
+    return aa
+end
+
+function generate_vector_function(func_array::Vector{Function},points) 
+    N = size(points)[2] 
+    l = length(func_array)
+    res = zeros(N*l)
+    x = points[1,:]
+    y = points[2,:]
+    function aa(time)
+        for i in 1:l
+            res[(i-1)*N+1:(i)*N] .= func_array[i].(x,y,Ref(time))
+        end
+        return res
+    end
+    return aa
+end
+
+
+function generate_vector_function(func1::Function,func2::Function,points;Mixed=true) 
+    N = size(points)[2]
+    x = points[1,:]
+    y = points[2,:]
+    if Mixed == true
+        function aa(time)
+            res = zeros(2*N) # prealocate resulting vector
+            for i in 1:N
+                res[2i-1] = func1(x[i],y[i],time)
+                res[2i] = func2(x[i],y[i],time)
+            end
+            return res
+        end
+        return aa # return function
+    else
+        function bb(time)
+            res = zeros(2*N) # prealocate resulting vector
+            for i in 1:N
+                res[i] = func1(x[i],y[i],time)
+                res[N+i] = func2(x[i],y[i],time)
+            end
+            return res
+        end
+        return bb # return function
+    end
+end
+
+function apply_matrix(func, tensor, param)
+    N = size(tensor)[1]
+    M = size(tensor)[2]
+    res = zeros((N*2,M*2))
+    #display(res)
+    for i = 1:N
+        for j = 1:M
+            res[i*2-1:i*2,j*2-1:j*2] = func(tensor[i,j,:],param) #[1 1;2 2]
+        end
+    end
+    return res
+end
+
+const ABCD = 10
+
+""" Define matrix kernels """
