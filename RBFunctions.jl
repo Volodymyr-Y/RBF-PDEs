@@ -169,4 +169,13 @@ end
 
 const ABCD = 10
 
+function max_error(computed_sol,reference_sol,n::Int)
+    range = LinRange(0.0,1.2,1000)
+    m_array = zeros(length(range))
+    for (i,t) in enumerate(range)
+        m_array[i] = maximum(abs.(computed_sol(t)[1:n] - reference_sol(t)[1:n]))
+    end
+    return maximum(m_array)
+end 
+
 """ Define matrix kernels """
