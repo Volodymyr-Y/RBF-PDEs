@@ -1,6 +1,6 @@
 
 
-
+using StaticArrays
 using Distances
 using LinearAlgebra 
 using FastHalton
@@ -8,12 +8,47 @@ using SparseArrays
 using NearestNeighbors
 using Symbolics
 using Latexify
-
+#using Revise
 function abcd(x)
     return x*x
 end
 
+abstract type Point  end
+abstract type BC end
+abstract type Dirichlet <: BC end
+abstract type Neumann <: BC end
 
+
+mutable struct DomainPoint{N} <: Point
+    pos::SVector{N,Float64}
+end
+
+mutable struct BoundaryPoint{N} <: Point
+    pos::SVector{N,Float64}
+    normal::SVector{N,Float64}
+end
+
+mutable struct BoundaryConditions{T} 
+    point_set::Array{BoundaryPoint}
+    g::Function 
+end
+
+mutable struct Problem
+    domain_points::Array{DomainPoint}
+    boundary_points::Array{BoundaryPoint}
+    bc::Array{BoundaryConditions}
+    forcing::Function
+    initial_conditions::Function
+    tspan
+    dt
+
+end
+
+mutable struct Solution
+    domain_points::Array{DomainPoint}
+    boundary_points::Array{BoundaryPoint}
+    sol
+end
 
 function random_collocation_points(N,x1,x2,y1,y2)
     # generates N 2D points in a rectange between x1 x2 and y1 y2 
@@ -62,9 +97,17 @@ function point_difference_tensor(points1,points2) # reates NxMx2 tensor
     return A
 end
 
+function point_difference_tensor(points1::Union{Vector{BoundaryPoint},Vector{DomainPoint}},
+    points2::Union{Vector{BoundaryPoint},Vector{DomainPoint}}) # reates NxMx2 tensor 
+    l1 = length(points1)
+    l2 = length(points2)
+    A = [ (points1[i].pos[k] - points2[j].pos[k]) for i=1:l1, j=1:l2, k=1:2]
+    return A
+end
+
 function apply(func, tensor,param)
     l1,l2,l3 = size(tensor)
-    A = [ func(tensor[i,j,:],param) for i=1:l1, j=1:l2]
+    A = [Base.@invokelatest func(tensor[i,j,:],param) for i=1:l1, j=1:l2]
     return A
 end
 
@@ -178,4 +221,76 @@ function max_error(computed_sol,reference_sol,n::Int)
     return maximum(m_array)
 end 
 
+function construct_kernel_array(matrix_kernel,functionals1,functionals2)
+    N1 = length(functionals1)
+    N2 = length(functionals2)
+    M = Matrix{typeof(matrix_kernel[1,1])}(undef,N1,N2)
+    for j = 1:N2
+        λⱼ = functionals2[j]
+        v = [λⱼ(matrix_kernel[1,:]),λⱼ(matrix_kernel[2,:]),λⱼ(matrix_kernel[3,:])]
+        for i = 1:N1
+            λᵢ = functionals1[i]
+            M[i,j] = λᵢ(v)
+        end
+    end
+    return M 
+end
+
+function compile_kernel_array(M)
+    @variables x₁ x₂ ϵ;
+    N1 = size(M)[1]
+    N2 = size(M)[2]
+    P = Matrix{Function}(undef,N1,N2)
+    for i = 1:N1
+        for j = 1:N2
+            #display(M[i,j])
+            P[i,j] = eval(build_function(M[i,j], [x₁, x₂], ϵ))
+        end
+    end
+    return P
+end
+
+function crete_block_point_tensors(p_list1,p_list2)
+    N1 = length(p_list1)
+    N2 = length(p_list2)
+    M = Matrix{Array{Float64, 3}}(undef,N1,N2)
+    for i in 1:N1
+        for j in 1:N2
+            M[i,j] = point_difference_tensor(p_list1[i],p_list2[j])
+        end
+    end
+
+    return M
+end
+#point_difference_tensor(Internal_points,Internal_points)
+function generate_block_matrices(function_array,tensor_array,param)
+    n1,n2 = size(tensor_array)
+    if size(tensor_array) != size(function_array)
+        return ArgumentError("function array and tensor array size mismatch")
+    end
+    M = Matrix{Matrix}(undef,n1,n2)
+    for i in 1:n1
+        for j in 1:n2
+            #display(function_array[i,j])
+            #display(tensor_array[i,j])
+            M[i,j] = apply(function_array[i,j], tensor_array[i,j], param)
+        end
+    end
+    return M
+end
+function flatten(block_matrix)
+    # flattens block matrices into usual matrices 
+    n1,n2 = size(block_matrix)
+    res = hcat(block_matrix[1,:]...)
+    #println(size(res))
+    for i in 2:n1
+        row  = hcat(block_matrix[i,:]...)
+        res = vcat(res,row)
+        #println(size(row))
+    end
+    return res
+end
+
 """ Define matrix kernels """
+
+
