@@ -97,6 +97,33 @@ function point_difference_tensor(points1,points2) # reates NxMx2 tensor
     return A
 end
 
+function sparse_point_difference_tensor(points1,points2,r_max)
+    #build k-d tree
+    small = 1e-16
+    n = size(points1)[2]
+    m = size(points2)[2]
+    A = spzeros(n,m)
+    tree = KDTree(points1,Euclidean(),leafsize = 3)
+    for j in 1:m
+        point = points2[:,j]
+        idxs = inrange(tree, point, r_max, true)
+        A[idxs,j] = vec(max.(pairwise(Euclidean(),point[:,:], points1[:,idxs]),small))
+    end
+    return A
+    """
+    else
+        print("asas")
+        tree = KDTree(data2,Euclidean(),leafsize = 3)
+        for j in 1:m
+            point = data1[:,j]
+            idxs = inrange(tree, point, r_max, true)
+            A[j,idxs] = vec(max.(pairwise(Euclidean(),point[:,:], data2[:,idxs]),small))
+        end
+        return A 
+    end
+    """
+end
+
 function point_difference_tensor(points1::Union{Vector{BoundaryPoint},Vector{DomainPoint}},
     points2::Union{Vector{BoundaryPoint},Vector{DomainPoint}}) # reates NxMx2 tensor 
     l1 = length(points1)
