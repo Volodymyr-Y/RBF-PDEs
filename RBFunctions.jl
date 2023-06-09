@@ -8,6 +8,7 @@ using SparseArrays
 using NearestNeighbors
 using Symbolics
 using Latexify
+import SparseArrays: sparse
 #using Revise
 function abcd(x)
     return x*x
@@ -48,6 +49,55 @@ mutable struct Solution
     domain_points::Array{DomainPoint}
     boundary_points::Array{BoundaryPoint}
     sol
+end
+
+struct SparseArray2
+    row_vec::Array{Int}
+    col_vec::Array{Int}
+    xvals::Array{Float64}
+    yvals::Array{Float64}
+    n_rows::Int
+    n_columns::Int
+end
+
+struct SparseArray
+    row_vec::Array{Int}
+    col_vec::Array{Int}
+    vals::Array{Float64}
+    n_rows::Int
+    n_columns::Int
+end
+
+function linear(r,ϵ) # Linear RBF
+    return abs(r)
+end
+
+function gaussian(r,ϵ) # guassian RBF
+    return exp(-1*r*r*ϵ*ϵ)
+end
+
+function Δgaussian(r,ϵ)
+    return 2*ϵ*ϵ*exp(-1*r*r*ϵ*ϵ)*(2*r*r*ϵ*ϵ - 1) - 2*ϵ*ϵ*exp(-1*r*r*ϵ*ϵ)
+end
+
+function sinusoid(x,y,period) # random function for interpolation
+    return sin(2*x*π/period)*sin(2*y*π/period)
+end
+
+function frankes_func(x,y) # literature standard benchmark for interpolation
+    f1 = 0.75*exp(-((9*x.-2).^2 + (9*y.-2).^2)/4)
+    f2 = 0.75*exp((-1/49)*(9*x+1).^2 - (1/10)*(9*y+1).^2)
+    f3 =0.5*exp((-1/4)*((9*x-7).^2 + (9*y-3).^2))
+    f4 = 0.2*exp(-(9*x-4).^2 - (9*y-7).^2)
+    return f1+f2+f3-f4
+end
+
+function wendland_C2(r::Real,ϵ)
+    if r/ϵ >= 0.0 && r/ϵ <=1.0
+        return ((1-r/ϵ)^4) * (4r/ϵ+1)
+    else 
+        return 0.0
+    end
 end
 
 function random_collocation_points(N,x1,x2,y1,y2)
@@ -99,29 +149,42 @@ end
 
 function sparse_point_difference_tensor(points1,points2,r_max)
     #build k-d tree
-    small = 1e-16
-    n = size(points1)[2]
+    small = 1e-100
+    n = size(points1)[2] 
     m = size(points2)[2]
-    A = spzeros(n,m)
-    tree = KDTree(points1,Euclidean(),leafsize = 3)
-    for j in 1:m
-        point = points2[:,j]
-        idxs = inrange(tree, point, r_max, true)
-        A[idxs,j] = vec(max.(pairwise(Euclidean(),point[:,:], points1[:,idxs]),small))
-    end
-    return A
-    """
-    else
-        print("asas")
-        tree = KDTree(data2,Euclidean(),leafsize = 3)
-        for j in 1:m
-            point = data1[:,j]
+
+    A = SparseArray2([],[],[],[],n,m)
+    if n<=m
+        tree = KDTree(points2,Euclidean(),leafsize = 10)
+        for j in 1:n
+            point = points1[:,j]
             idxs = inrange(tree, point, r_max, true)
-            A[j,idxs] = vec(max.(pairwise(Euclidean(),point[:,:], data2[:,idxs]),small))
+            N_neighbours = length(idxs)
+            a1 = point[1,:] .- points2[1,idxs]
+            a2 = point[2,:] .- points2[2,idxs]
+            append!(A.row_vec,j*ones(Int64,N_neighbours))
+            append!(A.col_vec,idxs)
+            append!(A.xvals,replace!(a1,0.0 => small))
+            append!(A.yvals,replace!(a2,0.0 => small))
         end
-        return A 
+        return A
+    else
+            tree = KDTree(points1,Euclidean(),leafsize = 10)
+            for j in 1:m
+                point = points2[:,j]
+                idxs = inrange(tree, point, r_max, true)
+                N_neighbours = length(idxs)
+                #println(points1[1,idxs])
+                a1 = points1[1,idxs] .- point[1,:]
+                a2 = points1[2,idxs] .- point[2,:]
+                append!(A.col_vec,j*ones(Int64,N_neighbours))
+                append!(A.row_vec,idxs)
+                append!(A.xvals,replace!(a1,0.0 => small))
+                append!(A.yvals,replace!(a2,0.0 => small))
+            end
+            return A
     end
-    """
+    
 end
 
 function point_difference_tensor(points1::Union{Vector{BoundaryPoint},Vector{DomainPoint}},
@@ -138,37 +201,15 @@ function apply(func, tensor,param)
     return A
 end
 
-function linear(r,ϵ) # Linear RBF
-    return abs(r)
-end
-
-function gaussian(r,ϵ) # guassian RBF
-    return exp(-1*r*r*ϵ*ϵ)
-end
-
-function Δgaussian(r,ϵ)
-    return 2*ϵ*ϵ*exp(-1*r*r*ϵ*ϵ)*(2*r*r*ϵ*ϵ - 1) - 2*ϵ*ϵ*exp(-1*r*r*ϵ*ϵ)
-end
-
-function sinusoid(x,y,period) # random function for interpolation
-    return sin(2*x*π/period)*sin(2*y*π/period)
-end
-
-function frankes_func(x,y) # literature standard benchmark for interpolation
-    f1 = 0.75*exp(-((9*x.-2).^2 + (9*y.-2).^2)/4)
-    f2 = 0.75*exp((-1/49)*(9*x+1).^2 - (1/10)*(9*y+1).^2)
-    f3 =0.5*exp((-1/4)*((9*x-7).^2 + (9*y-3).^2))
-    f4 = 0.2*exp(-(9*x-4).^2 - (9*y-7).^2)
-    return f1+f2+f3-f4
-end
-
-function wendland_C2(r::Real,ϵ)
-    if r/ϵ >= 0.0 && r/ϵ <=1.0
-        return ((1-r/ϵ)^4) * (4r/ϵ+1)
-    else 
-        return 0.0
+function apply(func, sm::SparseArray2,param)
+    Res = SparseArray(sm.row_vec,sm.col_vec,zeros(size(sm.xvals)),sm.n_rows,sm.n_columns)
+    for i in 1:length(sm.xvals)
+        Res.vals[i] = func([sm.xvals[i],sm.yvals[i]],param) 
     end
+    return Res
 end
+
+
 
 function generate_vector_function(func::Function,points) 
     N = size(points)[2]
@@ -248,13 +289,15 @@ function max_error(computed_sol,reference_sol,n::Int)
     return maximum(m_array)
 end 
 
-function construct_kernel_array(matrix_kernel,functionals1,functionals2)
+function construct_kernel_array(matrix_kernel,functionals1,functionals2) # apply functionals to matrix kernel 
     N1 = length(functionals1)
     N2 = length(functionals2)
     M = Matrix{typeof(matrix_kernel[1,1])}(undef,N1,N2)
+    m = size(matrix_kernel)[1]
     for j = 1:N2
         λⱼ = functionals2[j]
-        v = [λⱼ(matrix_kernel[1,:]),λⱼ(matrix_kernel[2,:]),λⱼ(matrix_kernel[3,:])]
+        v = [λⱼ(matrix_kernel[k,:]) for k in 1:m]
+        #v = [λⱼ(matrix_kernel[1,:]),λⱼ(matrix_kernel[2,:]),λⱼ(matrix_kernel[3,:])]
         for i = 1:N1
             λᵢ = functionals1[i]
             M[i,j] = λᵢ(v)
@@ -277,6 +320,7 @@ function compile_kernel_array(M)
     return P
 end
 
+
 function crete_block_point_tensors(p_list1,p_list2)
     N1 = length(p_list1)
     N2 = length(p_list2)
@@ -289,13 +333,27 @@ function crete_block_point_tensors(p_list1,p_list2)
 
     return M
 end
+
+function sparse_block_point_tensors(p_list1,p_list2,r_max)
+    N1 = length(p_list1)
+    N2 = length(p_list2)
+    M = Matrix{SparseArray2}(undef,N1,N2)
+    for i in 1:N1
+        for j in 1:N2
+            M[i,j] = sparse_point_difference_tensor(p_list1[i],p_list2[j],r_max)
+        end
+    end
+
+    return M
+end
+
 #point_difference_tensor(Internal_points,Internal_points)
 function generate_block_matrices(function_array,tensor_array,param)
     n1,n2 = size(tensor_array)
     if size(tensor_array) != size(function_array)
         return ArgumentError("function array and tensor array size mismatch")
     end
-    M = Matrix{Matrix}(undef,n1,n2)
+    M = Matrix{}(undef,n1,n2)
     for i in 1:n1
         for j in 1:n2
             #display(function_array[i,j])
@@ -305,6 +363,24 @@ function generate_block_matrices(function_array,tensor_array,param)
     end
     return M
 end
+function generate_block_matrices(function_array,tensor_array::Matrix{SparseArray2},param)
+    n1,n2 = size(tensor_array)
+    if size(tensor_array) != size(function_array)
+        return ArgumentError("function array and tensor array size mismatch")
+    end
+    M = Matrix{SparseArray}(undef,n1,n2)
+    for i in 1:n1
+        for j in 1:n2
+            #display(function_array[i,j])
+            #display(tensor_array[i,j])
+            M[i,j] = apply(function_array[i,j], tensor_array[i,j], param)
+        end
+    end
+    return M
+end
+
+
+
 function flatten(block_matrix)
     # flattens block matrices into usual matrices 
     n1,n2 = size(block_matrix)
@@ -318,6 +394,29 @@ function flatten(block_matrix)
     return res
 end
 
-""" Define matrix kernels """
+function flatten(block_matrix::Matrix{SparseArray})
+    # flattens block matrices into usual matrices 
+    n1,n2 = size(block_matrix)
+    row_track = 0
+    col_track = 0
+    res = SparseArray([],[],[],n1,n2)
+    #println(size(res))
+    for i in 1:n1
+        for j in 1:n2
+            #println(block_matrix[i,j].n_rows," ",block_matrix[i,j].n_columns)
+            append!(res.col_vec,block_matrix[i,j].col_vec .+ col_track)
+            append!(res.row_vec,block_matrix[i,j].row_vec .+ row_track)
+            append!(res.vals,block_matrix[i,j].vals)
+            col_track = col_track + block_matrix[i,j].n_columns
+        end
+        col_track = 0
+        row_track = row_track + block_matrix[i,1].n_rows
+    end
+    return res
+end
 
 
+
+function sparse(M::SparseArray)
+    return sparse(M.row_vec,M.col_vec,M.vals)
+end
