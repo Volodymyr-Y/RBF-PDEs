@@ -1,5 +1,5 @@
 
-
+using SymbolicNumericIntegration
 using StaticArrays
 using Distances
 using LinearAlgebra 
@@ -68,6 +68,8 @@ struct SparseArray
     n_columns::Int
 end
 
+""" Kernel and test function definitions"""
+
 function linear(r,ϵ) # Linear RBF
     return abs(r)
 end
@@ -99,6 +101,9 @@ function wendland_C2(r::Real,ϵ)
         return 0.0
     end
 end
+
+
+"""functions to generate points """
 
 function random_collocation_points(N,x1,x2,y1,y2)
     # generates N 2D points in a rectange between x1 x2 and y1 y2 
@@ -140,10 +145,14 @@ function generate_2D_equally_spaced_points(N) # interiror + boundary points on u
     return internal_points,boundary_points
 end
 
+
+""" functions for matrix creation"""
+
 function point_difference_tensor(points1,points2) # reates NxMx2 tensor 
     l1 = size(points1)[2]
     l2 = size(points2)[2]
     A = [ (points1[k,i] - points2[k,j]) for i=1:l1, j=1:l2, k=1:2]
+    A[A.==0] .= 1e-30
     return A
 end
 
@@ -293,10 +302,12 @@ function construct_kernel_array(matrix_kernel,functionals1,functionals2) # apply
     N1 = length(functionals1)
     N2 = length(functionals2)
     M = Matrix{typeof(matrix_kernel[1,1])}(undef,N1,N2)
+    
     m = size(matrix_kernel)[1]
     for j = 1:N2
         λⱼ = functionals2[j]
         v = [λⱼ(matrix_kernel[k,:]) for k in 1:m]
+        
         #v = [λⱼ(matrix_kernel[1,:]),λⱼ(matrix_kernel[2,:]),λⱼ(matrix_kernel[3,:])]
         for i = 1:N1
             λᵢ = functionals1[i]
@@ -305,6 +316,25 @@ function construct_kernel_array(matrix_kernel,functionals1,functionals2) # apply
     end
     return M 
 end
+
+function construct_kernel_array(matrix_kernel::Num,functionals1,functionals2) # apply functionals to matrix kernel 
+    N1 = length(functionals1)
+    N2 = length(functionals2)
+    M = Matrix{typeof(matrix_kernel[1,1])}(undef,N1,N2)
+    
+    for j = 1:N2
+        λⱼ = functionals2[j]
+        v = λⱼ(matrix_kernel) 
+        
+        #v = [λⱼ(matrix_kernel[1,:]),λⱼ(matrix_kernel[2,:]),λⱼ(matrix_kernel[3,:])]
+        for i = 1:N1
+            λᵢ = functionals1[i]
+            M[i,j] = λᵢ(v)
+        end
+    end
+    return M 
+end
+
 
 function compile_kernel_array(M)
     @variables x₁ x₂ ϵ;
@@ -416,7 +446,103 @@ function flatten(block_matrix::Matrix{SparseArray})
 end
 
 
-
 function sparse(M::SparseArray)
     return sparse(M.row_vec,M.col_vec,M.vals)
+end
+
+
+function PU_interpolation_matrix(Points1,Points2,PU_Points,f,ϵ,r_pu)
+    #f in the function that acts on the distance tensor,ϵ is the shape parameter, r_pu is the partition radius
+    # compute all the trees 
+    PU_tree = KDTree(PU_Points,Euclidean(),leafsize = 3)
+    Collocation_tree = KDTree(Points2,Euclidean(),leafsize = 3)
+    Test_tree  = KDTree(Points1,Euclidean(),leafsize = 3)
+    M = zeros(size(Points1)[2],size(Points2)[2]) # later be replaced with sparse matrix
+    scaling_vector= zeros(size(Points1)[2])
+    for i in 1:size(PU_Points)[2]
+        coll_indx = inrange(Collocation_tree, PU_Points[:,i], r_pu, true)
+        tst_indx = inrange(Test_tree, PU_Points[:,i], r_pu, true)
+        Local_distance_tensor = point_difference_tensor(Points1[:,tst_indx],Points2[:,coll_indx])
+        Local_interpolation_matrix = apply(f, Local_distance_tensor,ϵ)
+        M[tst_indx,coll_indx] .+= Local_interpolation_matrix
+        scaling_vector[tst_indx] .+= 1
+        #println(cond(Local_interpolation_matrix))
+    end
+    #println(scaling_vector)
+    return M .* (1 ./scaling_vector)
+end
+
+""" fUNCTIONS FOR POLYNOMIALS """
+
+""" generates basis of div free polynomials R^2 -> R^2"""
+function generate_2D2_div_free_poly_basis(m)
+    lst = []
+    for i in 0:m
+        for j in 0:i
+            p1 = x₁^j * x₂^(i-j)
+            aa = -∂₁(p1)
+            deg = degree(aa,x₂)
+            aa = substitute(aa,x₂ => 1)
+            p2 = (aa*x₂^(deg+1))/(deg+1)
+            append!(lst,[[p1 , p2]])
+        end
+    end
+    for i in 0:m
+        append!(lst,[[0, x₁^i]])
+    end
+    return lst
+end
+
+function generate_2D1_poly_basis(m)
+    lst = []
+    for i in 0:m
+        for j in 0:i
+            p = 1.0*x₁^j * x₂^(i-j)
+            append!(lst,[p])
+        end
+    end
+    return lst
+end
+
+
+function apply_functionals_to_polynomials(func_lst,poly_lst)
+    N_f = length(func_lst)
+    N_p = length(poly_lst)
+    A = Matrix{Num}(undef,N_f,N_p)
+    for i in 1:N_f
+        for j in 1:N_p
+            #println("asa")
+            #println(func_lst[i](poly_lst[j]))
+            A[i,j] = func_lst[i](poly_lst[j])
+        end
+    end
+    return A
+end
+
+function compile_polynomials(M)
+    @variables x₁ x₂;
+    N1 = size(M)[1]
+    N2 = size(M)[2]
+    P = Matrix{Function}(undef,N1,N2)
+    for i = 1:N1
+        for j = 1:N2
+            #display(M[i,j])
+            P[i,j] = eval(build_function(M[i,j], x₁, x₂))
+        end
+    end
+    return P
+end
+
+function generate_P_matrix(P_list,F_matrix)
+    L = size(hcat(P_list...))[2]
+    N_f,N_poly = size(F_matrix)
+    M = Matrix{}(undef,N_f,N_poly)
+    for i in 1:N_f
+        for j in 1:N_poly
+            #display(P_list[i][1,:])
+            M[i,j] =  reshape(F_matrix[i,j].(P_list[i][1,:],P_list[i][2,:]),(size(P_list[i])[2],1))
+        end
+    end
+
+    return flatten(M)
 end
