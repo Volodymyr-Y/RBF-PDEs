@@ -534,6 +534,9 @@ function compile_polynomials(M)
 end
 
 function generate_P_matrix(P_list,F_matrix)
+    if length(P_list) != size(F_matrix)[1]
+        println("troubles")
+    end
     L = size(hcat(P_list...))[2]
     N_f,N_poly = size(F_matrix)
     M = Matrix{}(undef,N_f,N_poly)
