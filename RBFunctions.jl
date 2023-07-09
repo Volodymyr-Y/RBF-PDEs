@@ -68,6 +68,8 @@ struct SparseArray
     n_columns::Int
 end
 
+
+
 """ Kernel and test function definitions"""
 
 function linear(r,ϵ) # Linear RBF
