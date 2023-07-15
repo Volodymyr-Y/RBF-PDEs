@@ -1,5 +1,5 @@
 
-using SymbolicNumericIntegration
+#using SymbolicNumericIntegration
 using StaticArrays
 using Distances
 using LinearAlgebra 
@@ -483,7 +483,7 @@ function generate_2D2_div_free_poly_basis(m)
         for j in 0:i
             p1 = x₁^j * x₂^(i-j)
             aa = -∂₁(p1)
-            deg = degree(aa,x₂)
+            deg = Symbolics.degree(aa,x₂)
             aa = substitute(aa,x₂ => 1)
             p2 = (aa*x₂^(deg+1))/(deg+1)
             append!(lst,[[p1 , p2]])

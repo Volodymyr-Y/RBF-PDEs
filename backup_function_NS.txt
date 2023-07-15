@@ -1,0 +1,72 @@
+N_points = size(I_points)[2]
+    
+    N_I = length(I_idx)+1
+    N_B = length(B_idx)
+    N_L = N_I-1
+    N_IL = 2N_I+ 2N_L
+    N_ILB = N_IL + 2N_B
+    zero_u = zeros(N_B)
+    N_L = N_I-1
+    u_loc_full =  @view U[[i,I_idx...]]
+    v_loc_full =  @view U[[i+N_I,(I_idx .+ N_I)...]]
+    u_loc      =  @view U[I_idx]
+    v_loc      =  @view U[I_idx .+ N_I]
+    u_eval = U[i]
+    v_eval = U[i+N_points]
+    Full_Local_I_points = @view I_points[:,[i,I_idx...]]
+    Local_I_points = @view I_points[:,I_idx]
+    Local_B_points = @view B_points[:,B_idx]
+
+    A15 = @view A[1:N_I,N_IL+1:N_IL+N_B]
+    A16 = @view A[1:N_I,N_IL+N_B+1:N_IL+2N_B]
+
+    A25 = @view A[N_I+1:2N_I,N_IL+1:N_IL+N_B]
+    A26 = @view A[N_I+1:2N_I,N_IL+N_B+1:N_IL+2N_B]
+
+    A35 = @view A[2*N_I+1:2*N_I+N_L,N_IL+1:N_IL+N_B]
+    A36 = @view A[2*N_I+1:2*N_I+N_L,N_IL+N_B+1:N_IL+2N_B]
+
+    A45 = @view A[2*N_I+N_L+1:2N_I+2N_L,N_IL+1:N_IL+N_B]
+    A46 = @view A[2*N_I+N_L+1:2N_I+2N_L,N_IL+N_B+1:N_IL+2N_B]
+
+    A55 = @view A[N_IL+1:N_IL+N_B,N_IL+1:N_IL+N_B]
+    A56 = @view A[N_IL+1:N_IL+N_B,N_IL+N_B+1:N_IL+2N_B]
+
+    A66 = @view A[N_IL+N_B+1:N_IL+2N_B,N_IL+N_B+1:N_IL+2N_B]
+
+    PA1 = @view A[1:N_I,N_ILB+1:N_ILB+N_poly]
+    PA2 = @view A[1:N_I,N_ILB+1:N_ILB+N_poly]
+    PA3 = @view A[1:N_I,N_ILB+1:N_ILB+N_poly]
+    PA4 = @view A[1:N_I,N_ILB+1:N_ILB+N_poly]
+    PA5 = @view A[1:N_I,N_ILB+1:N_ILB+N_poly]
+    PA6 = @view A[1:N_I,N_ILB+1:N_ILB+N_poly]
+
+
+    apply_NS!(A15,Full_Local_I_points,Local_B_points,u_loc_full,v_loc_full,zero_u,zero_u,F_A15,param)
+    apply_NS!(A16,Full_Local_I_points,Local_B_points,u_loc_full,v_loc_full,zero_u,zero_u,F_A16,param)
+    apply_NS!(A25,Full_Local_I_points,Local_B_points,u_loc_full,v_loc_full,zero_u,zero_u,F_A25,param)
+    apply_NS!(A26,Full_Local_I_points,Local_B_points,u_loc_full,v_loc_full,zero_u,zero_u,F_A26,param)
+
+    apply_NS!(A35,Local_I_points,Local_B_points,u_loc,v_loc,zero_u,zero_u,F_A35,param)
+    apply_NS!(A36,Local_I_points,Local_B_points,u_loc,v_loc,zero_u,zero_u,F_A36,param)
+    apply_NS!(A45,Local_I_points,Local_B_points,u_loc,v_loc,zero_u,zero_u,F_A45,param)
+    apply_NS!(A46,Local_I_points,Local_B_points,u_loc,v_loc,zero_u,zero_u,F_A46,param)
+
+    apply_NS!(A55,Local_B_points,Local_B_points,zero_u,zero_u,zero_u,zero_u,F_A55,param)
+    apply_NS!(A56,Local_B_points,Local_B_points,zero_u,zero_u,zero_u,zero_u,F_A56,param)
+    apply_NS!(A66,Local_B_points,Local_B_points,zero_u,zero_u,zero_u,zero_u,F_A66,param)
+
+    apply_P_NS!(PA1,Full_Local_I_points,u_loc_full,v_loc_full,F_PA1...)
+    apply_P_NS!(PA2,Full_Local_I_points,u_loc_full,v_loc_full,F_PA2...)
+    apply_P_NS!(PA3,Local_I_points,u_loc,v_loc,F_PA3...)
+    apply_P_NS!(PA4,Local_I_points,u_loc,v_loc,F_PA4...)
+    apply_P_NS!(PA5,Local_B_points,zero_u,zero_u,F_PA5...)
+    apply_P_NS!(PA6,Local_B_points,zero_u,zero_u,F_PA6...)
+
+
+    apply_NS!(B15,[0.0 0.0]',Local_B_points,[u_eval],v_eval,zero_u,zero_u,F_B[1,5],param)
+    apply_NS!(B16,[0.0 0.0]',Local_B_points,[u_eval],v_eval,zero_u,zero_u,F_B[1,6],param)
+    apply_NS!(B25,[0.0 0.0]',Local_B_points,[u_eval],v_eval,zero_u,zero_u,F_B[2,5],param)
+    apply_NS!(B26,[0.0 0.0]',Local_B_points,[u_eval],v_eval,zero_u,zero_u,F_B[2,6],param)
+    apply_P_NS!(PB1,[0.0 0.0]',[u_eval],[v_eval],F_PB1...)
+    apply_P_NS!(PB2,[0.0 0.0]',[u_eval],[v_eval],F_PB2...)
