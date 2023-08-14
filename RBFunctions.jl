@@ -9,6 +9,7 @@ using NearestNeighbors
 using Symbolics
 using Latexify
 import SparseArrays: sparse
+using DoubleFloats
 #using Revise
 function abcd(x)
     return x*x
@@ -99,6 +100,14 @@ end
 function wendland_C2(r::Real,ϵ)
     if r/ϵ >= 0.0 && r/ϵ <=1.0
         return ((1-r/ϵ)^4) * (4r/ϵ+1)
+    else 
+        return 0.0
+    end
+end
+
+function wendland_C8(r::Real,ϵ)
+    if r/ϵ >= 0.0 && r/ϵ <=1.0
+        return (1-r*ϵ)^10 * (429*(r*ϵ)^4 + 450*(r*ϵ)^3 + 210*(r*ϵ)^2 + 50*(r*ϵ)+5)
     else 
         return 0.0
     end
@@ -352,11 +361,23 @@ function compile_kernel_array(M)
     return P
 end
 
-
-function crete_block_point_tensors(p_list1,p_list2)
+function crete_block_point_tensors(p_list1::Vector{Matrix{Float64}},p_list2)
     N1 = length(p_list1)
     N2 = length(p_list2)
-    M = Matrix{Array{Float64, 3}}(undef,N1,N2)
+    M = Matrix{Array{Float64,3}}(undef,N1,N2)
+    for i in 1:N1
+        for j in 1:N2
+            M[i,j] = point_difference_tensor(p_list1[i],p_list2[j])
+        end
+    end
+
+    return M
+end
+
+function crete_block_point_tensors(p_list1::Vector{Matrix{Double64}},p_list2)
+    N1 = length(p_list1)
+    N2 = length(p_list2)
+    M = Matrix{Array{Double64, 3}}(undef,N1,N2)
     for i in 1:N1
         for j in 1:N2
             M[i,j] = point_difference_tensor(p_list1[i],p_list2[j])
@@ -550,4 +571,57 @@ function generate_P_matrix(P_list,F_matrix)
     end
 
     return flatten(M)
+end
+
+
+function create_peconditioner_diagonal(F_A,F_PA)
+    @variables r x₁ x₂
+    println(typeof(r))
+    N_func, N_poly = size(F_PA)
+    F_PA_copy = deepcopy(F_PA)
+    F_A_copy = deepcopy(F_A)
+
+    F_A_copy = substitute.(F_A_copy, sqrt(x₁^2+x₂^2) => r)
+    F_A_copy = substitute.(F_A_copy, x₁ => r)
+    F_A_copy = substitute.(F_A_copy, x₂ => r)
+    
+    F_PA_copy = substitute.(F_PA_copy, sqrt(x₁^2+x₂^2) => r)
+    F_PA_copy = substitute.(F_PA_copy, x₁ => r)
+    F_PA_copy = substitute.(F_PA_copy, x₂ => r)
+    
+    display(F_A_copy)
+    deg_array = zeros(N_func)
+    for i in 1:N_func
+        deg = Symbolics.degree(F_A_copy[i,i],r)
+        deg_array[i] = deg/2
+    end
+
+    deg_array_poly = zeros(N_poly)
+    for i in 1:N_poly
+        for j in 1:N_func
+            if !isequal(F_PA_copy[j,i],0)
+                deg = (Symbolics.degree(F_PA_copy[j,i],r))
+                deg_array_poly[i] = deg - deg_array[j]
+                break
+            end
+        end
+
+        """
+        if !isequal(F_PA_copy[1,i],0)
+            deg = (Symbolics.degree(F_PA_copy[1,i],r))
+            deg_array_poly[i] = deg - deg_array[1]
+        elseif !isequal(F_PA_copy[2,i],0)
+            deg = (Symbolics.degree(F_PA_copy[2,i],r))
+            deg_array_poly[i] = deg - deg_array[2]
+        elseif !isequal(F_PA_copy[3,i],0)
+            deg = (Symbolics.degree(F_PA_copy[3,i],r))
+            deg_array_poly[i] = deg - deg_array[3]
+        elseif !isequal(F_PA_copy[4,i],0)
+            deg = (Symbolics.degree(F_PA_copy[4,i],r))
+            deg_array_poly[i] = deg - deg_array[4]
+        end
+        """
+    end
+    #println(deg_array)
+    return deg_array ,deg_array_poly
 end

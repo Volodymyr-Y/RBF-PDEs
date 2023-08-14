@@ -337,7 +337,7 @@ function solve_linearized_NS(neighbours,N_poly,I_points,B_points,U,f1,f2,gu,gv,p
     #display(cond(G))
     G_s = sparse(G)
     sol = G_s\Global_RHS
-    #println("max local cond number: ",maximum(cond_num_array))
+    println("max local cond number: ",maximum(cond_num_array))
     #println("min local cond number: ",minimum(cond_num_array))
 
     return sol
